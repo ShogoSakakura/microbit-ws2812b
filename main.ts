@@ -2,28 +2,59 @@
 function checkStatus() {
     basic.clearScreen()
 
-    let x = 0
-    let y = 0
+    // 1段目：loudStep
+    let ls = Math.floor(loudStep / 2)
+    led.plot(ls, 0)
 
-    // currentEffectMode
+    // 2~3段目：currentEffectMode
+    let x = 0
+    let y = 1
     x = (currentEffectMode - 1) % 5
     if (currentEffectMode > 5) {
-        y = 1
+        y = 2
     }
     led.plot(x, y)
 
-    // currentColorMode
-    led.plot(currentColorMode - 1, 2)
+    // 4段目：currentColorMode
+    led.plot(currentColorMode - 1, 3)
 
-    // luminanceRate
+    // 5段目：luminanceRate
     for (let i = 0; i < Math.floor(luminanceRate / 0.2); i++) {
-        led.plot(i, 3)
+        led.plot(i, 4)
     }
 }
 function sendStatus() {
     if (MASTER) {
+        radio.sendValue("loud", loudStep)
         radio.sendValue("effect", currentEffectMode)
         radio.sendValue("color", currentColorMode)
+        radio.sendValue("lumin", luminanceRate)
+    }
+}
+function setSoundThresholdByLoudStep(loudStep: Number) {
+    if (loudStep == 1) {
+        input.setSoundThreshold(SoundThreshold.Loud, 32)
+    }
+    else if (loudStep == 2) {
+        input.setSoundThreshold(SoundThreshold.Loud, 64)
+    }
+    else if (loudStep == 3) {
+        input.setSoundThreshold(SoundThreshold.Loud, 96)
+    }
+    else if (loudStep == 4) {
+        input.setSoundThreshold(SoundThreshold.Loud, 128)
+    }
+    else if (loudStep == 5) {
+        input.setSoundThreshold(SoundThreshold.Loud, 160)
+    }
+    else if (loudStep == 6) {
+        input.setSoundThreshold(SoundThreshold.Loud, 192)
+    }
+    else if (loudStep == 7) {
+        input.setSoundThreshold(SoundThreshold.Loud, 224)
+    }
+    else if (loudStep == 8) {
+        input.setSoundThreshold(SoundThreshold.Loud, 255)
     }
 }
 /* ------ ここまで状態確認用関数 ------ */
@@ -197,7 +228,6 @@ function flowEffect() {
     else if (currentColorMode == 5) {
         flow(NeoPixelColors.Orange, NeoPixelColors.Indigo)
     }
-
 }
 function whiteSparkleEffect() {
     if (currentColorMode == 1) {
@@ -295,11 +325,8 @@ function angleEffect() {
     earOut.showColor(neopixel.rgb(255, input.rotation(Rotation.Pitch), input.rotation(Rotation.Roll)))
 }
 function turnOff() {
-    while (!changeFlag) {
-        earIn.showColor(neopixel.colors(NeoPixelColors.Black))
-        earOut.showColor(neopixel.colors(NeoPixelColors.Black))
-        basic.pause(25)
-    }
+    earIn.showColor(neopixel.colors(NeoPixelColors.Black))
+    earOut.showColor(neopixel.colors(NeoPixelColors.Black))
 }
 /* ------ ここまでエフェクト内容指定関数 ------ */
 
@@ -326,12 +353,23 @@ input.onButtonPressed(Button.B, function () {
 })
 // ABボタン同時押下
 input.onButtonPressed(Button.AB, function () {
-    luminanceRate += -0.2
-    if (luminanceRate < 0) {
-        luminanceRate = 1
-    }
-    else if (luminanceRate < 0.1) {
-        luminanceRate = 0
+    if (MASTER) {
+        // 消灯している時のみ音声受信感度設定
+        if (currentEffectMode == 10) {
+            loudStep = loudStep % 8 + 1
+            setSoundThresholdByLoudStep(loudStep)
+            sendStatus()
+        }
+        // 点灯している時は光量設定
+        else {
+            luminanceRate += -0.2
+            if (luminanceRate < 0) {
+                luminanceRate = 1
+            }
+            else if (luminanceRate < 0.1) {
+                luminanceRate = 0
+            }
+        }
     }
     checkStatus()
     changeFlag = true
@@ -350,34 +388,44 @@ input.onGesture(Gesture.Shake, function () {
 })
 // うるさくなる
 input.onSound(DetectedSound.Loud, function () {
-    currentColorMode += 1
-    if (currentColorMode > numberOfColModes) {
-        currentColorMode = 1
+    if (MASTER) {
+        currentColorMode += 1
+        if (currentColorMode > numberOfColModes) {
+            currentColorMode = 1
+        }
+        col1 = colorList[Math.floor(Math.random() * colorList.length)]
+        col2 = colorList[Math.floor(Math.random() * colorList.length)]
+        sendStatus()
+        checkStatus()
+        changeFlag = true
     }
-    col1 = colorList[Math.floor(Math.random() * colorList.length)]
-    col2 = colorList[Math.floor(Math.random() * colorList.length)]
-    sendStatus()
-    checkStatus()
-    changeFlag = true
 })
 // 無線受信
 radio.onReceivedValue(function (name, value) {
     if (!MASTER) {
-        if (name == "effect") {
+        if (name == "loud") {
+            loudStep = value
+            setSoundThresholdByLoudStep(loudStep)
+        }
+        else if (name == "effect") {
             currentEffectMode = value
         }
         else if (name == "color") {
             currentColorMode = value
         }
-        checkStatus()
-        changeFlag = true
+        else if (name == "lumin") {
+            luminanceRate = value
+        }
     }
+    checkStatus()
+    changeFlag = true
 })
 /* ------ ここまでボタン押下時の処理 ------ */
 
 /* ------ ここから初期設定 ------ */
 const MASTER = false // <-- 送信親機の場合true
 
+/* 定数 */
 const numberOfEffectModes = 10
 const numberOfColModes = 5
 const numberOfHalfLed = 13
@@ -394,10 +442,13 @@ const colorList = [
     NeoPixelColors.White,
     // NeoPixelColors.Black
 ]
+/* ================= */
 
+/* Neopixelの設定 */
 let strip = neopixel.create(DigitalPin.P2, 2 * numberOfHalfLed, NeoPixelMode.RGB)
 let earIn = strip.range(0, numberOfHalfLed)
 let earOut = strip.range(numberOfHalfLed, numberOfHalfLed)
+/* ================= */
 
 /* 初期変数 基本触らない */
 let randomGoldPixel = 0
@@ -407,22 +458,27 @@ let randomRedPixel = 0
 let col1 = colorList[Math.floor(Math.random() * colorList.length)]
 let col2 = colorList[Math.floor(Math.random() * colorList.length)]
 let changeFlag = false
+/* ================= */
 
+/* 起動時のデフォルト設定 */
+let loudStep = 4
 let currentEffectMode = 1
 let currentColorMode = 1
-let luminanceRate = 1
+let luminanceRate = 0.4
+
+setSoundThresholdByLoudStep(loudStep)
 /* ================= */
 
 radio.setGroup(1)
-input.setSoundThreshold(SoundThreshold.Loud, 128)
+led.setBrightness(5)
 /* ------ ここまで初期設定 ------ */
 
 
 basic.forever(function () {
     changeFlag = false
-    strip.setBrightness(150 * luminanceRate)
-    earIn.setBrightness(150 * luminanceRate)
-    earOut.setBrightness(150 * luminanceRate)
+    strip.setBrightness(100 * luminanceRate)
+    earIn.setBrightness(100 * luminanceRate)
+    earOut.setBrightness(100 * luminanceRate)
     if (currentEffectMode == 1) {
         twoToneEffect()
     } else if (currentEffectMode == 2) {
