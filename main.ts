@@ -59,14 +59,57 @@ function setSoundThresholdByLoudStep(loudStep: Number) {
 }
 /* ------ ここまで状態確認用関数 ------ */
 
+/* ------ ここからエフェクトサイクルの定数 ------ */
+const twoToneEffectColorPattern = [
+    [NeoPixelColors.Purple, NeoPixelColors.Blue],
+    [NeoPixelColors.Red, NeoPixelColors.Yellow],
+    [NeoPixelColors.Yellow, NeoPixelColors.Purple],
+    [NeoPixelColors.Green, NeoPixelColors.Blue],
+    [NeoPixelColors.Orange, NeoPixelColors.Indigo]]
+const flowEffectColorPattern = [
+    [NeoPixelColors.Purple, NeoPixelColors.Blue],
+    [NeoPixelColors.Green, NeoPixelColors.White],
+    [NeoPixelColors.Blue, NeoPixelColors.White],
+    [NeoPixelColors.Green, NeoPixelColors.Blue],
+    [NeoPixelColors.Orange, NeoPixelColors.Indigo]]
+/* ------ ここまでエフェクトサイクルの定数 ------ */
+
 /* ------ ここからエフェクトパターン用関数 ------ */
+function twoTone(color1: NeoPixelColors, color2: NeoPixelColors) {
+    sameEffectTimeCount = 0
+    colorPatternStep = 0
+    while (!changeFlag) {
+        sameEffectTimeCount += 1
+        if (currentColorMode == 1) {
+            if (sameEffectTimeCount > effectCycleTimeCount) {
+                colorPatternStep = (colorPatternStep + 1) % twoToneEffectColorPattern.length
+                sameEffectTimeCount = 0
+            }
+            color1 = twoToneEffectColorPattern[colorPatternStep][0]
+            color2 = twoToneEffectColorPattern[colorPatternStep][1]
+        }
+        earIn.showColor(neopixel.colors(color1))
+        earOut.showColor(neopixel.colors(color2))
+        basic.pause(50)
+    }
+}
 function flow(baseColor: NeoPixelColors, flowColor: NeoPixelColors) {
+    sameEffectTimeCount = 0
+
     strip.clear()
+    if (currentColorMode == 1) {
+        colorPatternStep = (colorPatternStep + 1) % flowEffectColorPattern.length
+
+        baseColor = flowEffectColorPattern[colorPatternStep][0]
+        flowColor = flowEffectColorPattern[colorPatternStep][1]
+    }
     strip.showColor(baseColor)
     for (let i = 0; i < 5; i++) {
         strip.setPixelColor(i, flowColor)
     }
-    while (!changeFlag) {
+
+    while (!changeFlag && sameEffectTimeCount <= effectCycleTimeCount) {
+        sameEffectTimeCount += 1
         basic.pause(80)
         strip.rotate(1)
         strip.show()
@@ -192,24 +235,19 @@ function centerGather(color: NeoPixelColors) {
 /* ------ ここからエフェクト内容指定関数 ------ */
 function twoToneEffect() {
     if (currentColorMode == 1) {
-        earIn.showColor(neopixel.colors(NeoPixelColors.Purple))
-        earOut.showColor(neopixel.colors(NeoPixelColors.Blue))
+        twoTone(NeoPixelColors.Purple, NeoPixelColors.Blue)
     }
-    if (currentColorMode == 2) {
-        earIn.showColor(neopixel.colors(NeoPixelColors.Red))
-        earOut.showColor(neopixel.colors(NeoPixelColors.Yellow))
+    else if (currentColorMode == 2) {
+        twoTone(NeoPixelColors.Red, NeoPixelColors.Yellow)
     }
-    if (currentColorMode == 3) {
-        earIn.showColor(neopixel.colors(NeoPixelColors.Yellow))
-        earOut.showColor(neopixel.colors(NeoPixelColors.Purple))
+    else if (currentColorMode == 3) {
+        twoTone(NeoPixelColors.Yellow, NeoPixelColors.Purple)
     }
-    if (currentColorMode == 4) {
-        earIn.showColor(neopixel.colors(NeoPixelColors.Green))
-        earOut.showColor(neopixel.colors(NeoPixelColors.Blue))
+    else if (currentColorMode == 4) {
+        twoTone(NeoPixelColors.Green, NeoPixelColors.Blue)
     }
-    if (currentColorMode == 5) {
-        earIn.showColor(neopixel.colors(NeoPixelColors.Orange))
-        earOut.showColor(neopixel.colors(NeoPixelColors.Indigo))
+    else if (currentColorMode == 5) {
+        twoTone(NeoPixelColors.Orange, NeoPixelColors.Indigo)
     }
 }
 function flowEffect() {
@@ -217,7 +255,7 @@ function flowEffect() {
         flow(NeoPixelColors.Purple, NeoPixelColors.Blue)
     }
     else if (currentColorMode == 2) {
-        flow(NeoPixelColors.Green, NeoPixelColors.Red)
+        flow(NeoPixelColors.Purple, NeoPixelColors.Blue)
     }
     else if (currentColorMode == 3) {
         flow(NeoPixelColors.Green, NeoPixelColors.White)
@@ -371,6 +409,7 @@ input.onButtonPressed(Button.AB, function () {
             }
         }
     }
+    sendStatus()
     checkStatus()
     changeFlag = true
 })
@@ -423,12 +462,13 @@ radio.onReceivedValue(function (name, value) {
 /* ------ ここまでボタン押下時の処理 ------ */
 
 /* ------ ここから初期設定 ------ */
-const MASTER = false // <-- 送信親機の場合true
+const MASTER = true // <-- 送信親機の場合true
 
 /* 定数 */
 const numberOfEffectModes = 10
 const numberOfColModes = 5
 const numberOfHalfLed = 13
+const effectCycleTimeCount = 50 /* basic.pause無しで1000で2.3秒 */
 
 const colorList = [
     NeoPixelColors.Red,
@@ -455,13 +495,15 @@ let randomGoldPixel = 0
 let randomWhitePixel = 0
 let randomGreenPixel = 0
 let randomRedPixel = 0
+let sameEffectTimeCount = 0
+let colorPatternStep = 0
 let col1 = colorList[Math.floor(Math.random() * colorList.length)]
 let col2 = colorList[Math.floor(Math.random() * colorList.length)]
 let changeFlag = false
 /* ================= */
 
 /* 起動時のデフォルト設定 */
-let loudStep = 4
+let loudStep = 8  /* 1~8 */
 let currentEffectMode = 1
 let currentColorMode = 1
 let luminanceRate = 0.4
@@ -471,6 +513,8 @@ setSoundThresholdByLoudStep(loudStep)
 
 radio.setGroup(1)
 led.setBrightness(5)
+
+checkStatus()
 /* ------ ここまで初期設定 ------ */
 
 
